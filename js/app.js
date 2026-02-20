@@ -2,14 +2,20 @@ let currentStep = 1;
 let record = {};
 let processSteps = [];
 
+/* ---------- VIEW CONTROL ---------- */
+
+function show(view) {
+  document.getElementById("home-view").classList.add("hidden");
+  document.getElementById("wizard-view").classList.add("hidden");
+  document.getElementById("records-view").classList.add("hidden");
+  document.getElementById(view).classList.remove("hidden");
+}
+
+function goHome() {
+  show("home-view");
+}
+
 function startNew() {
-  document.getElementById("home").classList.add("hidden");
-  document.getElementById("records-section").classList.add("hidden");
-  document.getElementById("form-section").classList.remove("hidden");
-
-  currentStep = 1;
-  processSteps = [];
-
   record = {
     uuid: generateUUID(),
     created_at: new Date().toISOString(),
@@ -19,20 +25,22 @@ function startNew() {
     process_steps: []
   };
 
+  processSteps = [];
+  currentStep = 1;
+  show("wizard-view");
   renderStep();
 }
 
-function goHome() {
-  document.getElementById("form-section").classList.add("hidden");
-  document.getElementById("records-section").classList.add("hidden");
-  document.getElementById("home").classList.remove("hidden");
+function cancelWizard() {
+  if (confirm("Discard current documentation?")) {
+    goHome();
+  }
 }
 
-function viewRecords() {
-  document.getElementById("home").classList.add("hidden");
-  document.getElementById("form-section").classList.add("hidden");
-  document.getElementById("records-section").classList.remove("hidden");
+/* ---------- RECORD LIST ---------- */
 
+function openRecords() {
+  show("records-view");
   renderRecords();
 }
 
@@ -42,7 +50,7 @@ function renderRecords() {
     container.innerHTML = "";
 
     if (!records.length) {
-      container.innerHTML = "<p>No records saved.</p>";
+      container.innerHTML = "<p>No records available.</p>";
       return;
     }
 
@@ -52,7 +60,8 @@ function renderRecords() {
         <strong>${r.craft.name}</strong><br/>
         ${r.created_at}<br/>
         Hash: ${r.record_hash.substring(0,16)}...<br/>
-        <button onclick='exportRecord(${JSON.stringify(r)})'>Export</button>
+        <button onclick='exportRecord(${JSON.stringify(r)})'>JSON</button>
+        <button onclick='exportPDF(${JSON.stringify(r)})'>PDF</button>
         <button onclick="deleteRecord('${r.uuid}')">Delete</button>
         <hr/>
       `;
@@ -60,6 +69,14 @@ function renderRecords() {
     });
   });
 }
+
+function deleteRecord(uuid) {
+  const tx = db.transaction(["records"], "readwrite");
+  tx.objectStore("records").delete(uuid);
+  tx.oncomplete = renderRecords;
+}
+
+/* ---------- WIZARD ---------- */
 
 function renderStep() {
   document.getElementById("step-indicator").innerText =
@@ -72,42 +89,33 @@ function renderStep() {
       <h2>Craft Identification</h2>
       <input id="craft_name" placeholder="Craft Name"/>
       <input id="local_name" placeholder="Local Name"/>
-      <select id="category">
-        <option>Weaving</option>
-        <option>Pottery</option>
-        <option>Metalwork</option>
-        <option>Woodcraft</option>
-      </select>
+      <input id="category" placeholder="Category"/>
     `;
   }
 
   if (currentStep === 2) {
     content.innerHTML = `
       <h2>Practitioner</h2>
-      <input id="practitioner" placeholder="Practitioner Name"/>
+      <input id="practitioner" placeholder="Name"/>
       <input id="community" placeholder="Community"/>
-      <select id="transmission">
-        <option>Familial</option>
-        <option>Apprenticeship</option>
-        <option>Guild</option>
-      </select>
+      <input id="transmission" placeholder="Transmission Mode"/>
     `;
   }
 
   if (currentStep === 3) {
     content.innerHTML = `
       <h2>Materials</h2>
-      <textarea id="materials" placeholder="Comma separated materials"></textarea>
+      <textarea id="materials" placeholder="Comma separated"></textarea>
     `;
   }
 
   if (currentStep === 4) {
     content.innerHTML = `
-      <h2>Process Documentation</h2>
-      <textarea id="step_description" placeholder="Describe step"></textarea>
-      <input type="file" accept="image/*" id="step_image"/>
+      <h2>Process Steps</h2>
+      <textarea id="step_desc" placeholder="Describe step"></textarea>
+      <input type="file" id="step_img" accept="image/*"/>
       <button onclick="addProcessStep()">Add Step</button>
-      <div id="process-list"></div>
+      <div id="step-list"></div>
     `;
     renderProcessList();
   }
@@ -115,7 +123,7 @@ function renderStep() {
   if (currentStep === 5) {
     content.innerHTML = `
       <h2>Finalize</h2>
-      <p>Click Next to generate cryptographic hash and save record.</p>
+      <p>Click Next to generate hash and save.</p>
     `;
   }
 }
@@ -163,8 +171,8 @@ function prevStep() {
 }
 
 function addProcessStep() {
-  const desc = document.getElementById("step_description").value;
-  const file = document.getElementById("step_image").files[0];
+  const desc = document.getElementById("step_desc").value;
+  const file = document.getElementById("step_img").files[0];
 
   if (!desc || !file) return alert("Add description and image.");
 
@@ -183,10 +191,10 @@ function addProcessStep() {
 }
 
 function renderProcessList() {
-  const container = document.getElementById("process-list");
-  if (!container) return;
+  const list = document.getElementById("step-list");
+  if (!list) return;
 
-  container.innerHTML = processSteps.map(s => `
+  list.innerHTML = processSteps.map(s => `
     <div>
       <strong>Step ${s.step_no}</strong>
       <p>${s.description}</p>
@@ -202,18 +210,6 @@ async function finalizeRecord() {
 
   saveRecord(record);
 
-  alert("Record saved successfully!");
-
-  document.getElementById("form-section").classList.add("hidden");
-  document.getElementById("records-section").classList.remove("hidden");
-
-  renderRecords();
-}
-
-function deleteRecord(uuid) {
-  const tx = db.transaction(["records"], "readwrite");
-  const store = tx.objectStore("records");
-  store.delete(uuid);
-
-  tx.oncomplete = renderRecords;
+  alert("Record saved.");
+  openRecords();
 }
